@@ -32,6 +32,7 @@ typedef struct {
     size_t error;
 }Parser;
 
+//builded paths without assuming a fixed maximum path length.
 static char *join_path(const char *dir, const char *file){
     size_t a= strlen(dir);
     size_t b= strlen(file);
@@ -47,6 +48,32 @@ static char *join_path(const char *dir, const char *file){
 
     memcpy(s + a, file, b + 1);    //for file string length
     return s;
+}
+
+// we will use this to extract the final name from a file or directory patjj.
+
+static char *part_of_path(const char *path){
+    size_t n=strlen(path);
+
+    while (n && path [n-1]== '/') n--;
+
+    size_t start = n;
+
+    while(start && path[start-1] != '/') start--; //using this to find where the final name starts
+
+    char *out = malloc(n - start + 1);
+    if (!out) return NULL;
+
+    memcpy(out, path + start, n- start);  //copying the final name into out
+    out [n - start]= '\0';
+
+    return out;
+    
+}
+
+static int ends_txt(const char *s){
+    size_t n=strlen(s);
+    return n>= 4 && strcmp(s + n -4, ".txt") == 0; //this checks if the file last 4 digits is .txt
 }
 
 
