@@ -153,7 +153,38 @@ static Value primary(Parser *p){
         num = num * 10 + (p->s[p->at] - '0');
         p->at++;
     }
-    
+    if (p->at <p->len && p->s[p->at] == '.'){
+        size_t dot= p->at++;
+
+        if(p->at == p->len ||      //checking if there is a digit after our decimal pnt
+        !isdigit((unsigned char)p->s[p->at])){
+            fail(p,p->base + dot +1);    //recording the error position
+            return integer(0);
+        }
+
+        while (p->at < p->len &&
+        isdigit((unsigned char) p->s[p->at])){
+            p->at++;
+        }
+
+        size_t n = p->at - start;
+        char *copy = malloc(n+1);
+
+        if (!copy) {
+            fail(p, position(p));
+            return integer(0);
+        }
+
+        memcpy(copy, p->s + start, n);
+        copy[n] = '\0';
+
+        double d = strtod(copy, NULL);
+        free(copy);
+
+        return floating(d);
+    }
+
+    return integer(num);
     
 }
 
