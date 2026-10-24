@@ -77,5 +77,84 @@ static int ends_txt(const char *s){
 }
 
 
+static void skip_ws(Parser *p){
+    while (p->at <p-> len &&
+    (p->s[p->at] == ' ' ||
+    p->s[p->at] == '\t' ||
+    p->s[p->at] == '\r')){
+        p->at++;
+    }
+}
+
+// AI (ChatGPT): I used it for tokenizer and position tracking design.
+
+static size_t position(const Parser *p){
+    return p->base + p->at + 1;
+}
+
+static void fail(Parser *p, size_t pos){   //preserves the first error instead of overwriting it
+    if(!p-> error) p->error =pos;
+}
+
+static Value integer(long long n) {
+    Value v={0.0, n, 0};
+    return v;
+}
+
+static Value floating(double n){
+    Value v={n, 0, 1};
+    return v;
+}
+
+static double as_double(Value v){ //converts the value to double if needed
+
+    return v.is_float ? v.f: (double)v.i;
+}
+
+static Value expr(Parser *p);
+static Value power(Parser *p);
+
+static Value primary(Parser *p){
+    skip_ws(p);  //skips whitespace chars
+
+    if (p->at >= p->len || p->s[p->at]== '\n'){    //checking if we reached at the end of te input or newline
+        fail(p, position(p));
+        return integer(0);
+    }
+
+    if(p->s[p->at] == '('){
+        p->at++;
+
+        Value v=expr(p);
+        if (p->error) return v;  //skipping the parenthesis
+
+        skip_ws(p);
+
+        if(p->at >= p->len || p->s[p->at] != ')'){
+            fail(p,position(p));
+        }else{
+            p->at++;
+        }
+
+        return v;
+    }
+
+    if (!isdigit((unsigned char)p->s[p->at])){
+        fail(p, position(p));
+        return integer(0);
+    }
+
+    long long num= 0;
+    size_t start = p->at;
+    
+    //reading digits until we reach a non-digit char
+    while (p->at < p->len &&
+    isdigit((unsigned char)p->s[p->at])){
+        num = num * 10 + (p->s[p->at] - '0');
+        p->at++;
+    }
+    
+    
+}
 
 
