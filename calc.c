@@ -307,7 +307,7 @@ static Value term(Parser *p){
 
     return left;
 }
-
+//expr() handles addition and substraction after term()
 static Value expr(Parser *p){
     Value left= term(p);
 
@@ -319,14 +319,14 @@ static Value expr(Parser *p){
             break;
         }
 
-        size_t op_pos = position(p);
+        size_t op_pos = position(p);      //saving the opeator position so floating point errors can be reported at the correct answer
         char op = p->s[p->at++];
 
         Value right = term(p);
 
         if(p->error) break;
 
-        if(left.is_float || right.is_float){
+        if(left.is_float || right.is_float){       //either operand is afloat or use double arithmetic. otherwise keep it integer.
             double d;
 
             if(op == '+'){
@@ -335,13 +335,13 @@ static Value expr(Parser *p){
                 d= as_double(left) - as_double(right);
             }
 
-            if(!isfinite(d)){
+            if(!isfinite(d)){     //reject infinite or NaN results instead of writing an invalid floating point to the output
                 fail(p, op_pos);
                 break;
             }
             left =floating(d);
         }else{
-            if(op == '+'){
+            if(op == '+'){     //if both inputs are integers we don't need to convert them
                 left= integer(left.i + right.i);
             }else{
                 left = integer(left.i - right.i);
