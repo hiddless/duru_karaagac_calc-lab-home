@@ -194,7 +194,7 @@ static Value power(Parser *p){
 
     if (p->error) return left;
 
-    skips_ws(p);
+    skip_ws(p);
 
     if (p->at +1 < p->len &&
     p->s[p->at] == '*' &&
@@ -337,7 +337,11 @@ static Value expr(Parser *p){
                 d= as_double(left) - as_double(right);
             }
 
-            if(!isfinite(d));
+            if(!isfinite(d)){
+                fail(p, op_pos);
+                break;
+            }
+            left =floating(d);
         }else{
             if(op == '+'){
                 left= integer(left.i + right.i);
@@ -348,4 +352,344 @@ static Value expr(Parser *p){
     }
 
     return left;
+
+}
+
+    static int evaluate_file(const char *input, const char *output) {
+        FILE *in=fopen(input, "rb");
+
+        if(!in){
+            fprintf(stderr, "cant open input: %s\n", input);
+            return 1;
+        }
+
+        FILE *temp= tmpfile();
+
+        if (!temp){
+            fprintf(stderr, "cant create temporary file\n");
+            fclose(in);
+            return 1;
+        }
+
+        char *line= NULL;
+        size_t cap= 0;
+        size_t used=0;
+        size_t base=0;
+        size_t error =0;
+
+        int ch;
+        int io_error=0;
+
+        while((ch = fgetc(in)) !=EOF){
+            if(used +2 > cap){
+                size_t next= cap ? cap * 2:256;
+                char *grown = realloc(line , next);
+
+                if(!grown){
+                    io_error = 1;
+                    break;
+                }
+
+                line =grown;
+                cap=next;
+            }
+
+            line[used++] = (char)ch;
+
+            if (ch != '\n') continue;
+            line[used]= '\0';
+
+            Parser p= {line, used, 0, base, 0};
+            skip_ws(&p);
+
+            //ignoring blank lines and full line comments
+            if (p.at <used&&
+            line[p.at] !='#'&&
+            line[p.at] != '\n'){
+
+                Value result = expr(&p);
+                skip_ws(&p);
+
+                if(!p.error&&
+                p.at < used&&
+                line[p.at] != '\n'){
+                    fail(&p, position(&p));
+                }
+
+                if (!p.error){
+                    if(result.is_float){
+                        if(fprintf(temp, "%.15g\n", result.f) < 0) {
+                            io_error =1;
+                        }
+                    }else{
+                        if(fprintf(temp,"%lld\n", result.i) <0){
+                            io_error =1;
+                        }
+                    }
+                }
+
+                error= p.error;
+            }
+            base +=used;
+            used=0;
+
+            if (error || io_error) break;
+        }
+
+        if(!error && !io_error &&used){
+            line[used]='\0';
+
+            Parser p= {line, used,0,base,0};
+            skip_ws(&p);
+
+            if(p.at <used && line[p.at] != '#'){
+                Value result =expr(&p);
+                skip_ws(&p);
+
+                if(!p.error && p.at <used){
+                    fail(&p, position(&p));
+                }
+
+                if(!p.error){
+                    if(result.is_float){
+                        if(fprintf(temp, "%.15g\n", result.f) < 0){
+                            io_error = 1;
+                        }
+                    }else{
+                        if (fprintf(temp, "%lld\n", result.i) <0){
+                            io_error= 1;
+                        }
+                    }
+                }
+
+                error= p.error;
+            }
+        }
+
+        if (ferror(in)) io_error =1;
+
+        free(line);
+        fclose(in);
+
+        if(io_error){
+            fprintf(stderr, "I/O or memory error: %s\n" , input);
+            fclose(temp);
+            return 1;
+        }
+
+        FILE *out = fopen(output, "wb");
+
+        if(!out){
+            fprintf(stderr, "cant write output: %s\n", output);
+            fclose(temp);
+            return 1;
+        }
+
+        if(error) {
+            if(fprintf(out, "ERROR:%zu\n", error) < 0){
+                io_error =1;
+            }
+        }else{
+            rewind(temp);
+            char block[8192];
+            size_t n;
+
+            while((n=fread(block, 1, sizeof block, temp)) > 0){
+                if (fwrite(block, 1, n, out) != n){
+                    io_error =1;
+                    break;
+                }
+            }
+
+            if (ferror(temp)) io_error = 1;
+        }
+
+        if(fclose(out) !=0){
+            io_error =1;
+        }
+
+        fclose(temp);
+
+        if(io_error){
+            fprintf(stderr, "cant finish writing: %s\n", output);
+        }
+
+        return io_error;
+    }
+
+    // constructinf the required output filename using student identifiers
+    static int process_file(const char * input, const char *outdir){
+        char *base = part_of_path(input);
+
+        if(!base) return 1;
+
+        if(!ends_txt(base)){
+            fprintf(stderr, "Input must be .txt: %s}\n", input);
+            free(base);
+            return 1;
+        }
+
+        base[strlen(base) - 4]= '\0';
+
+        size_t n = strlen(base) +
+        sizeof STUDENT_NAME +
+        sizeof STUDENT_LASTNAME +
+        sizeof STUDENT_ID +8;
+
+        char * filename = malloc(n);
+
+        if(!filename){
+            free(base);
+            return 1;
+        }
+
+        snprintf(filename, n, "%s_%s_%s_%s.txt",
+        base, STUDENT_NAME, STUDENT_LASTNAME, STUDENT_ID);
+
+        char *destination = join_path(outdir, filename);
+
+        free(base);
+        free(filename);
+
+        if(!destination) return 1;
+
+        int status = evaluate_file(input, destination);
+
+        free(destination);
+        return status;
+    }
+
+    int main(int argc, char **argv){
+        const char *directory= NULL;
+        const char *outopt= NULL;
+        const char *input= NULL;
+
+        for(int i= 1; i <argc; i++){
+            if (!strcmp(argv[i], "-d")||
+            !strcmp(argv[i], "--dir")){
+                if(++i >= argc || directory || input){
+                fprintf(stderr, "invaild -d option \n");
+                return 1;
+                }
+
+            directory= argv[i];
+             } else if (!strcmp(argv[i], "-o") ||
+                    !strcmp(argv[i], "--output-dir")) {
+
+             if (++i >= argc || outopt) {
+                 fprintf(stderr, "Invalid -o option\n");
+                 return 1;
+             }
+
+             outopt=argv[i];
+                
+        
+        } else if (argv[i][0] == '-' || input || directory) {
+            fprintf(stderr, "Unknown or extra argument: %s\n", argv[i]);
+            return 1;
+        } else {
+            input = argv[i];
+        }
+    }
+
+    if ((!input && !directory) || (input && directory)) {
+        fprintf(stderr,
+                "Usage: calc [-d DIR] [-o OUTDIR] [input.txt]\n");
+        return 1;
+    }
+
+    struct stat st;
+
+
+         if (stat(directory ? directory : input, &st) != 0 ||
+         (directory ? !S_ISDIR(st.st_mode) : !S_ISREG(st.st_mode))) {
+            fprintf(stderr, "missing or invalid input: %s\n",
+            directory ? directory: input);
+
+            return 1;
+    }
+
+    char *owned_out = NULL;
+
+    if(!outopt){
+        char *base = part_of_path(directory ? directory : input);
+
+        if(!base) return 1;
+
+        if(!directory && ends_txt(base)){
+            base[strlen(base) - 4] = '\0';
+        }
+
+        size_t n= strlen(base) +
+        sizeof STUDENT_NAME +
+        sizeof STUDENT_ID +4;
+
+        owned_out = malloc(n);
+
+        if (!owned_out) {
+            free(base);
+            return 1;
+        }
+
+        snprintf(owned_out, n, "%s_%s_%s", base, STUDENT_NAME,STUDENT_ID);
+
+        free(base);
+        outopt = owned_out;
+    }
+
+    if(mkdir(outopt, 0777) != 0 && errno != EEXIST){
+        fprintf(stderr, "cant create output directory; %s\n", outopt);
+        free(owned_out);
+        return 1;
+    }
+
+    if (stat(outopt, &st) !=0 || !S_ISDIR(st.st_mode)){
+        fprintf(stderr, "invalid output directory: %s\n", outopt);
+        free(owned_out);
+        return 1;
+    } 
+
+    int status= 0;
+
+    if(input){
+        status = process_file(input, outopt);
+    }else{
+        DIR *dir= opendir(directory);
+
+        if(!dir){
+            fprintf(stderr, "cant open directory: %s\n", directory);
+            free(owned_out);
+            return 1;
+        }
+
+        struct dirent *ent;
+
+        //onlyy process .txt files directly inside the directory
+        while ((ent= readdir(dir)) !=NULL){
+            if(!ends_txt(ent->d_name))continue;
+
+            char *path = join_path(directory, ent->d_name);
+
+            if(!path){
+                status=1;
+                break;
+            }
+
+            if (stat(path, &st)== 0&&
+        S_ISREG(st.st_mode)&&
+    process_file(path, outopt)){
+        status = 1;
+    }
+
+    free(path);
+
+    if (status) break;
+        }
+
+        closedir(dir);
+    }
+
+    free(owned_out);
+    return status;
+
 }
