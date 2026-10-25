@@ -352,7 +352,7 @@ static Value expr(Parser *p){
     return left;
 
 }
-
+     
     static int evaluate_file(const char *input, const char *output) {
         FILE *in=fopen(input, "rb");
 
@@ -369,7 +369,7 @@ static Value expr(Parser *p){
             return 1;
         }
 
-        char *line= NULL;
+        char *line= NULL;    //i used a dynamic buffer because input lines have no fixed maximum lenght.
         size_t cap= 0;
         size_t used=0;
         size_t base=0;
@@ -378,10 +378,11 @@ static Value expr(Parser *p){
         int ch;
         int io_error=0;
 
+        //read characters until EOF so the program can handle. both new line terminated and non terminated final lines.
         while((ch = fgetc(in)) !=EOF){
             if(used +2 > cap){
                 size_t next= cap ? cap * 2:256;
-                char *grown = realloc(line , next);
+                char *grown = realloc(line , next);     //doubling the capacity reduces the number of reallacations compared with increasing it one character at a time
 
                 if(!grown){
                     io_error = 1;
@@ -408,6 +409,7 @@ static Value expr(Parser *p){
                 Value result = expr(&p);
                 skip_ws(&p);
 
+                //even we ignored blank lines we still need toget  a report from any unexpected character.
                 if(!p.error&&
                 p.at < used&&
                 line[p.at] != '\n'){
@@ -434,6 +436,7 @@ static Value expr(Parser *p){
             if (error || io_error) break;
         }
 
+        //process the remaining characters when the last line doesnt end wit a new line
         if(!error && !io_error &&used){
             line[used]='\0';
 
@@ -464,6 +467,7 @@ static Value expr(Parser *p){
             }
         }
 
+        //allocating buffer before opening the final output file
         if (ferror(in)) io_error =1;
 
         free(line);
@@ -483,12 +487,12 @@ static Value expr(Parser *p){
             return 1;
         }
 
-        if(error) {
+        if(error) {  //if parsing fails write only the first error position. otherwise copy the succesful evaluated results.
             if(fprintf(out, "ERROR:%zu\n", error) < 0){
                 io_error =1;
             }
         }else{
-            rewind(temp);
+            rewind(temp);     //copying the temporary results in blocks to avoid loading the entire outpt in the memory
             char block[8192];
             size_t n;
 
