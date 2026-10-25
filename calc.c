@@ -86,8 +86,6 @@ static void skip_ws(Parser *p){
     }
 }
 
-// AI (ChatGPT): I used it for tokenizer and position tracking design.
-
 static size_t position(const Parser *p){
     return p->base + p->at + 1;
 }
