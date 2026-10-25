@@ -188,4 +188,70 @@ static Value primary(Parser *p){
     
 }
 
+//calling power recursively on the rigt makes ** right associative. so 2 ** 3 ** 2 means 2**(3**2)
+static Value power(Parser *p){
+    Value left =primary(p);
+
+    if (p->error) return left;
+
+    skips_ws(p);
+
+    if (p->at +1 < p->len &&
+    p->s[p->at] == '*' &&
+    p->s[p->at +1]== '*'){
+
+        size_t op=position(p);
+        p->at +=2;
+
+        skip_ws(p);
+        size_t operand = position(p);
+
+        Value right =power(p);
+
+        if (p->error) return left;
+
+        if (!left.is_float && !right.is_float){
+            //no negative integers
+            if(right.i <0){
+                fail(p, operand);
+                return left;
+            }
+
+            long long result =1;
+            long long factor = left.i;
+            unsigned long long exponent = (unsigned long long)right.i;
+
+            while(exponent){           //this avoids huge loops
+                if(exponent & 1U){
+                    result*=factor;
+                }
+
+                exponent >>= 1U;
+
+                if(exponent){
+                    factor*=factor;
+                }
+            }
+
+            return integer(result);
+        }
+
+        double d =pow(as_double(left), as_double(right));
+
+        //NaN and infinity are errors at the operator position
+        if (!isfinite(d)){
+            fail(p , op);
+        }
+
+        return floating(d);
+    }
+
+    return left;
+}
+
+
+
+
+
+
 
