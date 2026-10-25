@@ -249,9 +249,103 @@ static Value power(Parser *p){
     return left;
 }
 
+//Multiplication and division bind more tightly than addition, because expr() calls term() before processing + or -
+static Value term(Parser *p){
+    Value left = power(p);
 
+    while(!p->error){
+        skip_ws(p);
 
+        if (p->at >= p->len||
+        (p->s[p->at] != '*' && p->s[p->at] != '/')){
+            break;
+        }
 
+        size_t op_pos = position(p);
+        char op = p->s[p->at++];
 
+        if(op == '*'&&
+        p->at <p->len &&
+        p->s[p->at] == '*'){
+            fail(p, op_pos);
+            break;
+        }
 
+        skip_ws(p);
+        size_t operand_pos= position(p);
 
+        Value right = power(p);
+
+        if(p->error) break;
+
+        //division by 0 reports the start of the divisor
+        if(op== '/' && as_double(right) == 0.0){
+            fail(p, operand_pos);
+            break;
+        }
+
+        if(left.is_float || right.is_float){
+            double d;       //a float operand makes the entire operation use double
+
+            if(op == '*'){
+                d = as_double(left) * as_double(right);
+            }else{
+                d = as_double(left)/ as_double(right);
+            }
+            if(!isfinite(d)){
+                fail(p, op_pos);
+                break;
+            }
+
+            left =floating(d);
+        }else{
+            if (op == '*'){
+                left= integer(left.i * right.i);
+            }else{
+                left = integer(left.i / right.i); 
+            }
+        }
+    }
+
+    return left;
+}
+
+static Value expr(Parser *p){
+    Value left= term(p);
+
+    while(!p->error){
+        skip_ws(p);
+
+        if (p->at >= p->len||
+        (p->s[p->at] != '+' && p->s[p->at] != '-')){
+            break;
+        }
+
+        size_t op_pos = position(p);
+        char op = p->s[p->at++];
+
+        Value right = term(p);
+
+        if(p->error) break;
+
+        if(left.is_float || right.is_float){
+            double d;
+
+            if(op == '+'){
+                d = as_double(left) + as_double(right);
+            }else{
+                d= as_double(left) - as_double(right);
+            }
+
+            if(!isfinite(d));
+        }else{
+            if(op == '+'){
+                left= integer(left.i + right.i);
+            }else{
+                left = integer(left.i - right.i);
+            }
+        }
+    }
+
+    return left;
+}
